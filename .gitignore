@@ -1,0 +1,15 @@
+*.iml
+.idea
+*jar
+/lib/
+/classes/
+/out/
+/doc/
+/target/
+.lein-deps-sum
+.lein-repl-history
+.lein-plugins/
+.cljs_node_repl
+.clj-kondo
+.lsp
+.cpcache/
