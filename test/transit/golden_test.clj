@@ -4,13 +4,18 @@
             [clojure.string :as str]
             [jolt.transit :as t]))
 
-;; Golden exemplars come from a checkout of transit-format (the Transit spec +
-;; compliance corpus), pointed at by TRANSIT_FORMAT.
+;; Golden exemplars come from the transit-format submodule (the Transit spec +
+;; compliance corpus) vendored at the repo root, or wherever TRANSIT_FORMAT points.
 (def ^:private tf-dir
   (or (System/getenv "TRANSIT_FORMAT")
-      (throw (ex-info "TRANSIT_FORMAT must point at a transit-format checkout" {}))))
+      "transit-format"))
 
 (def ^:private dir (str tf-dir "/examples/0.8/simple/"))
+
+(when-not (.exists (java.io.File. (str tf-dir "/examples/0.8")))
+  (throw (ex-info (str "transit-format exemplars not found at " tf-dir
+                       " — run `git submodule update --init` (or set TRANSIT_FORMAT)")
+                  {})))
 
 ;; READ: decode golden transit-JSON -> Jolt value, compare to a hand-built literal.
 ;; (We can't read the .edn goldens directly — jolt's reader can't parse #inst / lists etc.

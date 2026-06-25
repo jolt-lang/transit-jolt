@@ -38,18 +38,25 @@ small records where the host can't represent the Transit type directly:
 
 ## Tests
 
-The test suite reads golden exemplars from a checkout of
-[transit-format](https://github.com/cognitect/transit-format), pointed at by the
-`TRANSIT_FORMAT` environment variable:
+The suite compares against golden exemplars from
+[transit-format](https://github.com/cognitect/transit-format), which is vendored
+as a git submodule at `transit-format/`. Initialize it after cloning:
 
 ```sh
-export TRANSIT_FORMAT=~/src/transit-format
-~/src/jolt-lang/jolt/bin/joltc run -m transit.golden-test
+git clone --recurse-submodules https://github.com/jolt-lang/transit-jolt.git   # or, for an existing clone:
+git submodule update --init
 ```
 
-It decodes every golden `.json`, checks the decode against its paired `.edn`
-where Jolt can read it, and asserts read/write/read idempotency over the whole
-exemplar corpus.
+Then run the suite with the Jolt compiler (`joltc`) on your `PATH`:
+
+```sh
+joltc run -m transit.golden-test
+```
+
+Set `TRANSIT_FORMAT` to point at a different transit-format checkout if needed.
+The suite decodes every golden `.json`, checks the decode against its paired
+`.edn` where Jolt can read it, and asserts read/write/read idempotency over the
+whole exemplar corpus.
 
 ## License
 
