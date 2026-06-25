@@ -3,6 +3,20 @@
 Transit (JSON encoding) for the [Jolt](https://github.com/jolt-lang/jolt) Clojure
 runtime (Chez Scheme host). Implements the Transit 0.8 wire format.
 
+## Dependency
+
+Add to your `deps.edn` (Jolt resolves the `:git/sha`; the `:git/tag` is for
+reference):
+
+```clojure
+{:deps {jolt-lang/transit-jolt
+        {:git/url "https://github.com/jolt-lang/transit-jolt"
+         :git/tag "v0.1.0"
+         :git/sha "909255b3bbdc04bbd1c7782b4056f8d2f082ec8d"}}}
+```
+
+It pulls `org.clojure/data.json` (the JSON reader/writer) transitively.
+
 ## Usage
 
 ```clojure
