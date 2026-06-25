@@ -1,7 +1,6 @@
 (ns jolt.transit
   "Transit (JSON) serialization for the Jolt runtime.
-  Wire format follows the transit-format compliance suite (~/src/transit-format);
-  reference.js is the behavioral reference for the public API."
+  Implements the Transit 0.8 JSON wire format."
   (:require [clojure.data.json :as json]
             [clojure.string :as str]))
 
@@ -46,11 +45,10 @@
            (let [st (if (= (:idx st) max-cache-entries) {:entries [] :idx 0} st)]
              (-> st (update :entries conj s) (update :idx inc))))))
 
-;; BigInt beyond jolt's 64-bit range: jolt's reader silently overflows at 2^63,
+;; BigInt beyond Jolt's 64-bit range: Jolt's reader silently overflows at 2^63,
 ;; so a decoded ~n is held as a record preserving the exact decimal string — it
-;; round-trips through ~n, and transit-clj re-reads it as a BigInteger during
-;; verify. Detected by class equality: jolt's instance? does not recognise
-;; defrecord types (see JOLT_BUGS.md).
+;; round-trips through ~n. Detected by class equality rather than instance?
+;; (Jolt's instance? does not recognise defrecord types).
 (defrecord Bigint [s])
 (def ^:private bigint-class (class (->Bigint "")))
 (def ^:private two-pow-53 9007199254740992)   ; 2^53 — ints at/above this become ~i
@@ -58,8 +56,7 @@
 (defn- big-int? [v] (= (class v) bigint-class))
 
 ;; An unrecognised ~#tag value: transit preserves these as opaque tagged
-;; values rather than erroring. Same defrecord/class-equality detection as
-;; Bigint (jolt's instance? doesn't recognise records — see JOLT_BUGS.md).
+;; values rather than erroring. Same defrecord/class-equality detection as Bigint.
 (defrecord TaggedValue [tag value])
 (def ^:private tv-class (class (->TaggedValue "" nil)))
 (defn- tagged-value? [v] (= (class v) tv-class))
@@ -150,7 +147,7 @@
 
 ;; ---------------------------------------------------------- encoding (write)
 
-(declare encode-value)
+(declare encode-value encode-map)
 
 (defn- escape-string [s]
   ;; transit reserves strings whose first char is ~, ^ or ` — prefix with ~ so

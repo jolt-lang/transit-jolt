@@ -1,9 +1,16 @@
 (ns transit.golden-test
   (:require [clojure.test :refer [deftest is testing run-tests]]
             [clojure.data.json :as json]
+            [clojure.string :as str]
             [jolt.transit :as t]))
 
-(def ^:private dir "/Users/yogthos/src/transit-format/examples/0.8/simple/")
+;; Golden exemplars come from a checkout of transit-format (the Transit spec +
+;; compliance corpus), pointed at by TRANSIT_FORMAT.
+(def ^:private tf-dir
+  (or (System/getenv "TRANSIT_FORMAT")
+      (throw (ex-info "TRANSIT_FORMAT must point at a transit-format checkout" {}))))
+
+(def ^:private dir (str tf-dir "/examples/0.8/simple/"))
 
 ;; READ: decode golden transit-JSON -> Jolt value, compare to a hand-built literal.
 ;; (We can't read the .edn goldens directly — jolt's reader can't parse #inst / lists etc.
@@ -140,10 +147,8 @@
            (t/read (slurp (str dir "map_vector_keys.json")))))))
 
 (deftest write-cmap
-  (testing "non-stringable keys force ~#cmap; entries compare semantically
-            (transit maps are unordered — jolt's array-map may reorder keys)"
-    ;; jolt's array-map does not preserve insertion order, so we compare the
-    ;; decoded maps (= is order-insensitive) rather than exact wire bytes.
+  (testing "non-stringable keys force ~#cmap; entries compare semantically"
+    ;; transit maps are unordered, so compare decoded maps (= is order-insensitive).
     (let [rt (fn [v g] (= (t/read (t/write v))
                           (t/read (slurp (str dir g)))))]
       (is (rt (array-map nil "null as map key" [1 2] "Array as key to force cmap")
@@ -151,11 +156,47 @@
       (is (rt {[1 1] "one" [2 2] "two"} "map_vector_keys.json")))))
 
 (deftest bigint-roundtrip
-  (testing "~i/~n round-trip idempotently — jolt can't hold BigInts, so spec
-            fidelity against transit-clj is deferred to bin/verify"
+  (testing "~i/~n round-trip idempotently"
     (doseq [g ["ints_interesting.json" "ints_interesting_neg.json"]]
       (let [v (t/read (slurp (str dir g)))]
         (is (= v (t/read (t/write v))) g)))))
+
+;; --- corpus-wide idempotency: read -> write -> read over every exemplar ---
+
+(defn- nan? [x] (and (double? x) (Double/isNaN x)))
+
+;; = but NaN-aware, URI-aware (= is identity for URI in jolt), and order-insensitive
+;; for maps.
+(defn- teq [a b]
+  (cond
+    (and (nan? a) (nan? b))                                              true
+    (and (instance? java.net.URI a) (instance? java.net.URI b))          (= (.toString a) (.toString b))
+    (and (map? a) (map? b) (= (set (keys a)) (set (keys b))))
+      (every? #(teq (get a %) (get b %)) (keys a))
+    (and (vector? a) (vector? b) (= (count a) (count b)))
+      (every? true? (map teq a b))
+    :else (= a b)))
+
+(defn- walk [^java.io.File f]
+  (cond (.isFile f)     [f]
+        (.isDirectory f) (mapcat walk (.listFiles f))
+        :else            []))
+
+(defn- json-files [d]
+  (->> (walk (java.io.File. d))
+       (filter #(let [nm (.getName %)]
+                  (and (.endsWith nm ".json") (not (.endsWith nm ".verbose.json")))))
+       (map #(.getAbsolutePath %))
+       sort))
+
+(deftest corpus-idempotent
+  (testing "every transit-format exemplar round-trips read -> write -> read"
+    (let [files (json-files (str tf-dir "/examples/0.8"))]
+      (is (seq files) "found exemplar .json files under TRANSIT_FORMAT")
+      (doseq [f files]
+        (let [v1 (t/read (slurp f))
+              v2 (t/read (t/write v1))]
+          (is (teq v1 v2) f))))))
 
 (defn -main [& _]
   (let [m (run-tests 'transit.golden-test)]

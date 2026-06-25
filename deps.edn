@@ -1,3 +1,5 @@
 {:paths ["src" "test"]
- :deps {}
+ :deps {org.clojure/data.json
+        {:git/url "https://github.com/clojure/data.json.git"
+         :git/sha "1fce9070ee851f49a6c4ce6e1c0bb0db4d7594a0"}}
  :aliases {}}

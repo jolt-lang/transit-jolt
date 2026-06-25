@@ -1,9 +1,0 @@
-#!/bin/sh
-# Disk-based round-trip over every transit-format exemplar (no streaming):
-# read transit+json -> write -> read again, assert idempotent; compare to .edn
-# oracle where jolt can read it. Exercises the full codec end-to-end.
-set -e
-cd "$(dirname "$0")/.."
-JOLTC="${JOLTC:-$HOME/src/jolt-lang/jolt/bin/joltc}"
-EXAMPLES="${1:-$HOME/src/transit-format/examples/0.8}"
-exec "$JOLTC" run -m transit.corpus "$EXAMPLES"
