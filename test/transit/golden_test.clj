@@ -1,6 +1,7 @@
 (ns transit.golden-test
   (:require [clojure.test :refer [deftest is testing run-tests]]
             [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.string :as str]
             [jolt.transit :as t]))
 
@@ -175,6 +176,8 @@
 (defn- teq [a b]
   (cond
     (and (nan? a) (nan? b))                                              true
+    (and (instance? jolt.transit.Bigint a) (number? b))                  (= (:s a) (str b))
+    (and (number? a) (instance? jolt.transit.Bigint b))                  (= (str a) (:s b))
     (and (instance? java.net.URI a) (instance? java.net.URI b))          (= (.toString a) (.toString b))
     (and (map? a) (map? b) (= (set (keys a)) (set (keys b))))
       (every? #(teq (get a %) (get b %)) (keys a))
@@ -202,6 +205,30 @@
         (let [v1 (t/read (slurp f))
               v2 (t/read (t/write v1))]
           (is (teq v1 v2) f))))))
+
+;; READ CONFORMANCE: the transit-format golden is decode(.json) == .edn. We use
+;; clojure.edn (not clojure.core/read-string) so #inst / #uuid / bare lists / the
+;; bigint N suffix all read as data. Three .edn files are JVM-printed #object[...]
+;; forms clojure.edn can't parse; their read conformance is covered elsewhere
+;; (one_uri/uris -> read-tagged-scalars via .toString) or has no oracle
+;; (maps_unrecognized_keys).
+(def ^:private edn-unreadable
+  #{"maps_unrecognized_keys" "one_uri" "uris"})
+
+(deftest read-conformance
+  (testing "t/read(.json) equals the golden .edn (edn oracle) for every paired exemplar"
+    (let [pairs (for [f (json-files (str tf-dir "/examples/0.8"))
+                      :let [fname (last (str/split f #"/"))
+                            base  (subs fname 0 (- (count fname) 5))
+                            ef    (java.io.File.
+                                    (str (subs f 0 (- (count f) 5)) ".edn"))]
+                      :when (and (.exists ef) (not (contains? edn-unreadable base)))]
+                  [base f ef])]
+      (is (seq pairs) "found paired .edn/.json exemplars")
+      (doseq [[base jf ef] pairs]
+        (is (teq (edn/read-string (slurp ef))
+                 (t/read (slurp jf)))
+            (str base ": t/read(.json) != edn(.edn)"))))))
 
 (defn -main [& _]
   (let [m (run-tests 'transit.golden-test)]
