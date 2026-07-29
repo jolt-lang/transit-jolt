@@ -1,7 +1,12 @@
 (ns jolt.transit
   "Transit (JSON) serialization for the Jolt runtime.
   Implements the Transit 0.8 JSON wire format."
-  (:require [clojure.data.json :as json]
+  ;; jolt.time first: data.json's default-write-options reads
+  ;; java.time.format.DateTimeFormatter/ISO_INSTANT as its :date-formatter at
+  ;; namespace-load time, and java.time.* is the jolt-lang/time library rather
+  ;; than core (RFC 0008), so the shim has to be installed before that runs.
+  (:require [jolt.time]
+            [clojure.data.json :as json]
             [clojure.string :as str]))
 
 ;; ---------------------------------------------------------- decoding (read)
