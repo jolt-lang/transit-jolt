@@ -11,8 +11,8 @@ reference):
 ```clojure
 {:deps {jolt-lang/transit-jolt
         {:git/url "https://github.com/jolt-lang/transit-jolt"
-         :git/tag "v0.1.0"
-         :git/sha "909255b3bbdc04bbd1c7782b4056f8d2f082ec8d"}}}
+         :git/tag "v0.1.1"
+         :git/sha "543b75796b90e7bd74b93ac2f398feb7db2425eb"}}}
 ```
 
 It pulls `org.clojure/data.json` (the JSON reader/writer) transitively.
