@@ -5,8 +5,8 @@
         ;; data.json reads java.time.format.DateTimeFormatter/ISO_INSTANT at
         ;; namespace-load time, and java.time.* is this library rather than core
         ;; (RFC 0008). jolt.transit requires it ahead of data.json.
-        jolt-lang/time
+        io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time.git"
-         :git/sha "33c5e9831c046cfcbe68bc0c9c33e92568eaebb1"}}
+         :git/sha "2c58d9c709a25d80608757c3026f4c656a994ef1"}}
  :aliases {:test {:main-opts ["-m" "transit.golden-test"]}}
  :tasks {test "jolt -M:test"}}
