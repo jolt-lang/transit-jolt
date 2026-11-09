@@ -24,7 +24,7 @@ It pulls `org.clojure/data.json` (the JSON reader/writer) transitively.
   (:require [jolt.transit :as t]))
 
 (t/write {:name "transit" :tags #{:a :b}})
-;; => "[\"^ \",\"name\",\"transit\",\"tags\",[\"~#set\",[\"~:a\",\"~:b\"]]]"
+;; => "[\"^ \",\"~:name\",\"transit\",\"~:tags\",[\"~#set\",[\"~:b\",\"~:a\"]]]"
 
 (t/read (t/write {:name "transit" :tags #{:a :b}}))
 ;; => {:name "transit" :tags #{:a :b}}
@@ -39,12 +39,16 @@ Jolt has no Java types, so `read` returns host-native values where possible and
 small records where the host can't represent the Transit type directly:
 
 - Transit `null`, `boolean`, `string`, `keyword`, `symbol` -> the obvious native value.
-- `integer` -> native number (bounded by Jolt's 64-bit ints).
+- `integer` -> native number; a value too wide for a long reads as a BigInt.
+- `big integer` (`~n`) -> native integer. Integers past 64 bits are written as `~n`.
 - `decimal` -> native number; integer/decimal distinction is preserved on the wire.
+- `big decimal` (`~f`) -> BigDecimal, and a BigDecimal is written as `~f`.
+- `ratio` -> the `ratio` extension transit-clj uses, `["~#ratio",["~n1","~n3"]]`,
+  read back as a Ratio.
+- `bytes` (`~b`) -> byte array, written as base64.
 - `time` -> value for which `inst?` is true.
 - `uuid` -> value for which `uuid?` is true.
 - `uri` -> `java.net.URI`.
-- `big integer` beyond 2^63 -> `jolt.transit.Bigint` (holds the decimal string).
 - `char` -> `jolt.transit.CharV` (holds a 1-char string).
 - `array`, `list`, `set`, `map` -> the matching Jolt collection.
 - Unknown tags -> `jolt.transit.TaggedValue` (`tag` + `value`), re-emitted on write
@@ -61,10 +65,10 @@ git clone --recurse-submodules https://github.com/jolt-lang/transit-jolt.git   #
 git submodule update --init
 ```
 
-Then run the suite with the Jolt compiler (`joltc`) on your `PATH`:
+Then run the suite with `jolt` on your `PATH`:
 
 ```sh
-joltc run -m transit.golden-test
+jolt -M:test
 ```
 
 Set `TRANSIT_FORMAT` to point at a different transit-format checkout if needed.
