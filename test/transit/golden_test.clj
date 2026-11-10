@@ -167,6 +167,32 @@
       (let [v (t/read (slurp (str dir g)))]
         (is (= v (t/read (t/write v))) g)))))
 
+;; Number types transit-clj tags: BigInt is ~n at any size, BigDecimal ~f, a
+;; Ratio the "ratio" extension over [numerator denominator] as ~n, bytes ~b.
+(def ^:private two-pow-70 (* 1180591620717411303424N 1))
+
+(deftest big-number-tags
+  (testing "an integer past 64 bits writes as ~n and reads back"
+    (is (= ["~#'" "~n1180591620717411303424"] (json/read-str (t/write two-pow-70))))
+    (is (= two-pow-70 (t/read (t/write two-pow-70))))
+    (is (= (- two-pow-70) (t/read (t/write (- two-pow-70))))))
+  (testing "~n and an overflowing ~i read as integers"
+    (is (= 12345678901234567890123N (t/read "[\"~#'\",\"~n12345678901234567890123\"]")))
+    (is (= 12345678901234567890123N (t/read "[\"~#'\",\"~i12345678901234567890123\"]")))
+    (is (integer? (t/read "[\"~#'\",\"~n5\"]"))))
+  (testing "a ratio is the ratio extension, as transit-clj writes it"
+    (is (= ["~#ratio" ["~n1" "~n3"]] (json/read-str (t/write 1/3))))
+    (is (= [["~#ratio" ["~n-2" "~n3"]]] (json/read-str (t/write [-2/3]))))
+    (is (= 1/3 (t/read (t/write 1/3))))
+    (is (= {:r 7/2} (t/read (t/write {:r 7/2})))))
+  (testing "a BigDecimal is ~f"
+    (is (= ["~#'" "~f1.5"] (json/read-str (t/write 1.5M))))
+    (is (= 1.5M (t/read (t/write 1.5M))))
+    (is (decimal? (t/read (t/write 1.5M)))))
+  (testing "bytes are ~b base64"
+    (is (= ["~#'" "~baGVsbG8="] (json/read-str (t/write (.getBytes "hello")))))
+    (is (= "hello" (String. (t/read (t/write (.getBytes "hello"))))))))
+
 ;; --- corpus-wide idempotency: read -> write -> read over every exemplar ---
 
 (defn- nan? [x] (and (double? x) (Double/isNaN x)))

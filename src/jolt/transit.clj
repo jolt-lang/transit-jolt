@@ -50,13 +50,21 @@
            (let [st (if (= (:idx st) max-cache-entries) {:entries [] :idx 0} st)]
              (-> st (update :entries conj s) (update :idx inc))))))
 
-;; BigInt beyond Jolt's 64-bit range: Jolt's reader silently overflows at 2^63,
-;; so a decoded ~n is held as a record preserving the exact decimal string — it
-;; round-trips through ~n. Detected by class equality rather than instance?
-;; (Jolt's instance? does not recognise defrecord types).
+;; Jolt has arbitrary-precision integers, so ~n (and a ~i too wide for a long)
+;; decode to a native integer. Bigint is the record earlier versions decoded ~n
+;; into; it is still accepted on write so values held from them keep encoding.
 (defrecord Bigint [s])
 (def ^:private bigint-class (class (->Bigint "")))
 (def ^:private two-pow-53 9007199254740992)   ; 2^53 — ints at/above this become ~i
+
+(defn- parse-int
+  "A transit integer string: a long when it fits, otherwise a BigInt, as
+  transit-java's integer handler reads it."
+  [s]
+  (or (parse-long s) (bigint s)))
+
+(defn- b64-decode [s] (.decode (java.util.Base64/getDecoder) ^String s))
+(defn- b64-encode [b] (.encodeToString (java.util.Base64/getEncoder) b))
 
 (defn- big-int? [v] (= (class v) bigint-class))
 
@@ -82,10 +90,10 @@
       \m (java.util.Date. (parse-long (subs s 2)))
       \u (java.util.UUID/fromString (subs s 2))
       \r (java.net.URI. (subs s 2))
-      \i (parse-long (subs s 2))
+      \i (parse-int (subs s 2))
       \d (Double/parseDouble (subs s 2))
-      \n (->Bigint (subs s 2))
-      \b (->Bigint (subs s 2))
+      \n (parse-int (subs s 2))
+      \b (b64-decode (subs s 2))
       \f (bigdec (subs s 2))
       \^ (subs s 1)   ; ~^X  ->  "^X"  (transit string-prefix tag)
       \` (subs s 1)   ; ~`X  ->  "`X"  (transit string-prefix tag)
@@ -104,6 +112,14 @@
     (do (when (rc-cacheable? s as-key?) (rc-register s))
         (decode-string s))))
 
+(defn- decode-tagged
+  "A ~#tag value with no built-in handler. \"ratio\" is the extension
+  transit-clj writes for a Ratio; anything else stays an opaque TaggedValue."
+  [tag rep]
+  (if (and (= tag "ratio") (vector? rep) (= 2 (count rep)) (every? integer? rep))
+    (/ (first rep) (second rep))
+    (->TaggedValue tag rep)))
+
 (defn- decode-verbose-map [m]
   ;; json-verbose object form. A single "~#"-prefixed key is a tagged value
   ;; (or ~#' scalar root, ~#set/~#list/~#cmap); any other map is a plain map
@@ -118,7 +134,7 @@
           (= k "~#list") (apply list (mapv decode-value rep))
           (= k "~#cmap") (into {} (for [[kk vv] (partition 2 rep)]
                                    [(decode-value kk) (decode-value vv)]))
-          :else          (->TaggedValue (subs k 2) (decode-value rep))))
+          :else          (decode-tagged (subs k 2) (decode-value rep))))
       (into {} (for [[k v] m] [(decode-string k) (decode-value v)])))))
 
 (defn- decode-value [node]
@@ -142,7 +158,7 @@
       (= raw "~#cmap") (into {} (for [[k v] (partition 2 (second node))]
                                   [(decode-value k) (decode-value v)]))
       (and (string? raw) (.startsWith raw "~#"))
-        (->TaggedValue (subs raw 2) (decode-value (second node)))
+        (decode-tagged (subs raw 2) (decode-value (second node)))
       (string? raw)    (into [(decode-string raw)] (mapv decode-value (rest node)))
       :else            (mapv decode-value node))))
 
@@ -169,9 +185,13 @@
 
 (defn- encode-number [v]
   (cond
+    (and (integer? v) (or (> v Long/MAX_VALUE) (< v Long/MIN_VALUE)))
+      (str "~n" (str v))
     (and (integer? v)
          (or (>= v two-pow-53) (<= v (- two-pow-53))))
       (str "~i" (str v))
+    (ratio? v)   ["~#ratio" [(str "~n" (numerator v)) (str "~n" (denominator v))]]
+    (decimal? v) (str "~f" (str v))
     (and (double? v) (Double/isNaN v))      "~zNaN"
     (and (double? v) (Double/isInfinite v)) (if (pos? v) "~zINF" "~z-INF")
     :else v))   ; bare Long (<2^53) or plain Double
@@ -188,6 +208,7 @@
     (inst? v)       (str "~m" (str (inst-ms v)))
     (uuid? v)       (str "~u" (.toString v))
     (instance? java.net.URI v) (str "~r" (.toString v))
+    (bytes? v)      (str "~b" (b64-encode v))
     (number? v)     (encode-number v)
     (true? v)       v
     (false? v)      v
@@ -203,7 +224,7 @@
     (string? k)  (escape-string k)
     (keyword? k) (str "~:" (kw-name k))
     (symbol? k)  (str "~$" (kw-name k))
-    (integer? k) (str "~i" (str k))
+    (integer? k) (let [e (encode-number k)] (if (string? e) e (str "~i" k)))
     (double? k)  (str "~d" (str k))
     (big-int? k) (str "~n" (:s k))
     :else (throw (ex-info (str "transit: non-stringable map key " (pr-str k)) {:key k}))))
@@ -217,10 +238,11 @@
     ["~#cmap" (->> m (mapcat (fn [[k v]] [(encode-value k) (encode-value v)])) vec)]))
 
 (defn- scalar? [v]
-  (or (nil? v) (true? v) (false? v) (number? v)
+  ;; A ratio is a number but encodes as a ~#ratio array, so it is its own root.
+  (or (nil? v) (true? v) (false? v) (and (number? v) (not (ratio? v)))
       (string? v) (keyword? v) (symbol? v)
       (inst? v) (uuid? v) (instance? java.net.URI v)
-      (big-int? v) (decimal? v) (charv? v)))
+      (big-int? v) (decimal? v) (charv? v) (bytes? v)))
 
 (defn- encode [v]
   ;; The top level is always a JSON array. A bare scalar is wrapped in ["~#'" X]
