@@ -7,6 +7,6 @@
         ;; (RFC 0008). jolt.transit requires it ahead of data.json.
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time.git"
-         :git/sha "a6690ca1ae69585681965823959eef33707239ce"}}
+         :git/sha "8daa9dd95d87a57393c17d83a8f9a1e37b966bbe"}}
  :aliases {:test {:main-opts ["-m" "transit.golden-test"]}}
  :tasks {test "jolt -M:test"}}
